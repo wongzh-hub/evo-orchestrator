@@ -41,7 +41,8 @@ GENERATE   arena: mutate champion → challenger, duel on structure,
    ▼
 SELECT     duel:  evolved candidate  vs  incumbent champion
    │       a) you pick   b) design-judge (cheap)   c) run-all (2×, real output)
-   │       └─ split verdict? → FUSE best of both → gate duel
+   │       └─ if SPLIT (optional, default-on): FUSE the two → EXTRA gate duel,
+   │          child kept only if it beats the winner (else discarded)
    ▼
 FEEDBACK   your thumbs up/down — authoritative, overrides the judge
    ▼
@@ -58,6 +59,13 @@ judge (mode b).
 The "other" candidate in SELECT is the **incumbent champion from
 `policy.json`** — i.e. *did this run's evolution actually beat the best you
 already trust?* Only a proven win is promoted.
+
+The **FUSE** step (crossover) is an **optional extra round**. It fires only when a
+duel is *split* — each candidate wins some judged dimensions — and is **on by default
+in that case** (skipped when one side sweeps). A splice agent merges the winning parts
+of both into a child; that child must then win an **extra gate duel** against the
+winner to be kept, else it's discarded (fusion often regresses). See
+[`evo/fuse.py`](evo/fuse.py).
 
 ---
 
