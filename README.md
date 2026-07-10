@@ -1,5 +1,7 @@
 # evo-orchestrator
 
+[![tests](https://github.com/wongzh-hub/evo-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/wongzh-hub/evo-orchestrator/actions/workflows/ci.yml)
+
 > **RL for multi-agent workflows — but the weights are readable text.**
 
 **Evolve a multi-agent workflow the way you'd train a policy — except the
