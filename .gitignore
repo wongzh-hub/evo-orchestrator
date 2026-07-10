@@ -1,0 +1,15 @@
+# secrets
+.env
+*.local.*
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# evo run state written by examples (keep your real project evo/ dirs though)
+examples/demo_project/
+runs/

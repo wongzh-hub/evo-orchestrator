@@ -1,0 +1,15 @@
+{
+  "name": "evo-orchestrator",
+  "owner": { "name": "Zixu Huang" },
+  "metadata": {
+    "description": "Self-evolving multi-agent orchestration — evolve workflow scaffolds as shareable text policies.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "evo-tune",
+      "source": "./claude-code",
+      "description": "Self-tuning workflow loop for Claude Code: champion vs challenger, your feedback as reward, improves across runs. Ships 7 workflow seeds + the /evo command."
+    }
+  ]
+}

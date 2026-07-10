@@ -1,0 +1,10 @@
+{
+  "name": "evo-tune",
+  "version": "0.1.0",
+  "description": "Self-tuning workflow loop for Claude Code: run a project's workflow via an evolving text policy (champion + challenger), compare them, take your feedback as reward, and improve the workflow across runs. Ships 7 workflow seeds.",
+  "author": { "name": "Zixu Huang" },
+  "homepage": "https://github.com/wongzh-hub/evo-orchestrator",
+  "repository": "https://github.com/wongzh-hub/evo-orchestrator",
+  "license": "MIT",
+  "keywords": ["workflow", "multi-agent", "evolution", "self-improving", "orchestration"]
+}
