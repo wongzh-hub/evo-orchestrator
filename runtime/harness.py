@@ -65,6 +65,7 @@ class Harness:
         self.default_model = default_model
         self.verbose = verbose
         self.meter = Meter()
+        self.errors = 0  # agent() calls that timed out or raised (guarded -> None)
 
     # ---- primitives -------------------------------------------------------
     async def agent(self, prompt, *, label=None, phase=None, schema=None,
@@ -82,9 +83,11 @@ class Harness:
                 )
             except asyncio.TimeoutError:
                 self.log(f"timeout: {label or 'agent'}")
+                self.errors += 1
                 return None
             except Exception as e:  # noqa: BLE001 - deliberate catch-all guard
                 self.log(f"error: {label or 'agent'}: {e}")
+                self.errors += 1
                 return None
 
     async def _call(self, prompt, model_id, schema, max_tokens, system):
@@ -174,13 +177,3 @@ async def run_script(harness, script_src, args=None):
         ns["agent"], ns["parallel"], ns["pipeline"], ns["log"], ns["phase"], args
     )
 
-
-def extract_meta(script_src):
-    """Best-effort read of a script's module-level META dict (for labels/classify)."""
-    ns = {}
-    try:
-        exec(compile(script_src, "<meta>", "exec"), ns)  # noqa: S102
-    except Exception:  # noqa: BLE001
-        return {}
-    meta = ns.get("META")
-    return meta if isinstance(meta, dict) else {}

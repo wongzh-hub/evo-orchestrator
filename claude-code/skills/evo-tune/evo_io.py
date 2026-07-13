@@ -26,6 +26,9 @@ def now(): return datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
 def main():
+    if len(sys.argv) < 3:
+        print("usage: evo_io.py {init|get|set-challenger|promote|log|status} <evodir> [...]")
+        sys.exit(2)
     cmd, d = sys.argv[1], sys.argv[2]
     os.makedirs(d, exist_ok=True)
     if cmd == "init":
@@ -36,7 +39,10 @@ def main():
             f"# evo journal - {name}\n\n- {now()} v1 init champion ({len(script)} chars)\n")
         print("init v1", name)
     elif cmd == "get":
-        which = sys.argv[3]
+        which = sys.argv[3] if len(sys.argv) > 3 else ""
+        if which not in ("champion", "challenger"):
+            print("get: which must be 'champion' or 'challenger'")
+            sys.exit(2)
         o = load(ppath(d) if which == "champion" else cpath(d))
         if not o:
             sys.exit(2)
@@ -48,6 +54,9 @@ def main():
         print("challenger set from v", pol.get("version"))
     elif cmd == "promote":
         pol, ch = load(ppath(d)), load(cpath(d))
+        if not pol:
+            print("no policy.json to promote into (init first)")
+            sys.exit(2)
         if not ch:
             print("no challenger")
             sys.exit(2)

@@ -7,6 +7,12 @@ export const meta = {
   phases: [{ title: 'Review' }, { title: 'Verify' }],
 }
 
+const AGENT_TIMEOUT_MS = 240000  // guard: a hung agent resolves null, never stalls parallel()
+const aw = (p, o) => Promise.race([
+  agent(p, o),
+  new Promise((r) => setTimeout(() => { log(`timeout: ${(o && o.label) || 'agent'}`); r(null) }, AGENT_TIMEOUT_MS)),
+])
+
 const diff = (typeof args === 'string') ? args : (args && args.diff) || ''
 
 const FIND_SCHEMA = {
@@ -30,14 +36,14 @@ phase('Review')
 const results = await pipeline(DIMENSIONS,
   // stage 1: review one dimension
   async ([key, desc]) => {
-    const r = await agent(
+    const r = await aw(
       `Review this diff for ${key} issues (${desc}). Be specific and cite locations.\n\nDIFF:\n${diff}`,
       { label: `review:${key}`, phase: 'Review', model: 'sonnet', schema: FIND_SCHEMA })
     return { key, findings: (r && r.findings) || [] }
   },
   // stage 2: adversarially verify this dimension's findings (fires as soon as stage 1 is done)
   async ({ key, findings }) => parallel(findings.map((f) => () =>
-    agent(`Adversarially verify this ${key} finding. Try to REFUTE it; set real=false unless it is ` +
+    aw(`Adversarially verify this ${key} finding. Try to REFUTE it; set real=false unless it is ` +
           `clearly triggerable/exploitable given the diff.\nTITLE: ${f.title}\nLOCATION: ${f.location}\n` +
           `DETAIL: ${f.detail}\n\nDIFF:\n${diff}`,
           { label: `verify:${key}`, phase: 'Verify', model: 'opus', schema: VERDICT_SCHEMA })

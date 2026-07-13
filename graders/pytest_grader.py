@@ -1,7 +1,13 @@
 """Optional execution grader for coding seeds.
 
 Gives an OBJECTIVE reward (fraction of tests passed) instead of a judge verdict,
-for run-all mode on code tasks. The tests file defines a module-level
+for run-all mode on code tasks.
+
+It is wired into SELECT mode c via evo/grade.py, which runs this grader in a
+SUBPROCESS with a timeout (process isolation) when you pass `--tests` and the
+candidate emits a solution/code field; it also works standalone as a CLI.
+
+The tests file defines a module-level
 `TESTS = [((arg1, arg2, ...), expected), ...]` and the solution defines an entry
 function (default name `solve`).
 

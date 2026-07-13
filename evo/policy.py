@@ -9,6 +9,8 @@ The champion "weight" is a Python policy-script string (see runtime.harness).
 """
 
 import json
+import os
+import shutil
 from pathlib import Path
 
 
@@ -17,7 +19,16 @@ def _read_json(p):
 
 
 def _write_json(p, obj):
-    Path(p).write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    """Atomic write: dump to a temp file in the same dir, fsync, then os.replace().
+    Prevents a half-written policy.json (e.g. on a Drive-synced target) from
+    bricking the project on the next read."""
+    p = Path(p)
+    tmp = p.with_name(p.name + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, p)
 
 
 class EvoStore:
@@ -44,13 +55,25 @@ class EvoStore:
         return self.policy()
 
     def policy(self):
-        return _read_json(self.policy_path)
+        try:
+            return _read_json(self.policy_path)
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            bak = self.policy_path.with_name(self.policy_path.name + ".bak")
+            if bak.exists():
+                print(f"  · WARNING: policy.json unreadable ({e}); restoring from {bak.name}")
+                data = _read_json(bak)
+                _write_json(self.policy_path, data)
+                return data
+            raise
 
     def champion_script(self):
         return self.policy()["script"]
 
     def promote(self, script, origin, stamp):
         pol = self.policy()
+        if self.policy_path.exists():  # keep a rollback of the previous champion weight
+            shutil.copy2(self.policy_path,
+                         self.policy_path.with_name(self.policy_path.name + ".bak"))
         pol["history"].append({
             "version": pol["version"], "origin": origin, "ts": stamp,
         })

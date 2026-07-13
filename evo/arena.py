@@ -8,6 +8,8 @@ Output: a single evolved candidate script (may equal the champion if nothing
 beat it) plus a trajectory for the journal.
 """
 
+from collections import Counter
+
 from .judge import duel
 
 # alternating mutation pressure across rounds
@@ -46,17 +48,17 @@ async def run_arena(h, brief, champion_script, journal_tail="", rounds=2):
     """Returns (candidate_script, trajectory)."""
     best = {"id": "champion", "script": champion_script}
     traj = []
+    focus = MUTATE_FOCI[0]  # round-0 seed; later rounds are DIRECTED by the judge's losses
     for rnd in range(rounds):
-        focus = MUTATE_FOCI[rnd % len(MUTATE_FOCI)]
         mutant_src = await mutate(h, best["script"], journal_tail, focus)
         if not mutant_src:
             traj.append({"round": rnd, "result": "mutate_failed"})
             h.log(f"arena round {rnd}: mutation failed; keeping current best")
             break
         challenger = {"id": f"mutant{rnd}", "script": mutant_src}
-        res = await duel(h, brief, best, challenger)
+        res = await duel(h, brief, best, challenger, incumbent_id=best["id"])
         dethroned = res["winner"] == challenger["id"]
-        traj.append({"round": rnd, "winner": res["winner"],
+        traj.append({"round": rnd, "winner": res["winner"], "focus": focus,
                      "dethroned": dethroned, "split": res["split"]})
         h.log(f"arena round {rnd}: winner={res['winner']} dethroned={dethroned}")
         if dethroned:
@@ -64,4 +66,13 @@ async def run_arena(h, brief, champion_script, journal_tail="", rounds=2):
         else:
             h.log("champion held this round; early-stopping arena")
             break
+        # DIRECTED mutation: aim the next round at the dimensions the current best
+        # still lost, mined from the judge's per-dimension verdicts (not a fixed cycle)
+        lost = [r["dimension"] for r in res.get("reasons", []) if r["favored"] != best["id"]]
+        if lost:
+            top = [d for d, _ in Counter(lost).most_common(3)]
+            focus = ("the judge still penalized this design on: " + ", ".join(top)
+                     + " — target those specifically")
+        else:
+            focus = MUTATE_FOCI[(rnd + 1) % len(MUTATE_FOCI)]
     return best["script"], traj

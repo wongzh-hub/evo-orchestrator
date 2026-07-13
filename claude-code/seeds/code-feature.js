@@ -6,6 +6,12 @@ export const meta = {
   phases: [{ title: 'Plan' }, { title: 'Implement' }, { title: 'Review' }],
 }
 
+const AGENT_TIMEOUT_MS = 240000  // guard: a hung agent resolves null, never stalls parallel()
+const aw = (p, o) => Promise.race([
+  agent(p, o),
+  new Promise((r) => setTimeout(() => { log(`timeout: ${(o && o.label) || 'agent'}`); r(null) }, AGENT_TIMEOUT_MS)),
+])
+
 const spec = (args && args.spec) || ''
 const files = (args && args.files) || []
 const byPath = Object.fromEntries(files.map((f) => [f.path, f.content]))
@@ -26,7 +32,7 @@ const REVIEW_SCHEMA = {
 }
 
 phase('Plan')
-const plan = await agent(
+const plan = await aw(
   `Plan the MINIMAL edits to implement this feature:\n${spec}\n\nExisting files:\n` +
   files.map((f) => `- ${f.path}`).join('\n'),
   { label: 'plan', phase: 'Plan', model: 'opus', schema: PLAN_SCHEMA })
@@ -34,14 +40,14 @@ const steps = (plan && plan.steps) || []
 
 phase('Implement')
 const edits = (await parallel(steps.map((step) => () =>
-  agent('Apply this change and return the FULL new file content.\n' +
+  aw('Apply this change and return the FULL new file content.\n' +
         `CHANGE: ${step.change}\nFEATURE SPEC: ${spec}\n\nCURRENT (${step.path}):\n${byPath[step.path] || ''}`,
         { label: `impl:${step.path}`, phase: 'Implement', model: 'sonnet', schema: NEW_SCHEMA })
     .then((r) => ({ path: step.path, content: (r && r.content) || '', note: (r && r.note) || '' }))))).filter(Boolean)
 
 phase('Review')
 const reviewed = (await parallel(edits.map((e) => () =>
-  agent('Review this edit against the spec. Flag bugs/omissions; approve only if correct.\n' +
+  aw('Review this edit against the spec. Flag bugs/omissions; approve only if correct.\n' +
         `SPEC: ${spec}\nFILE ${e.path}:\n${e.content}`,
         { label: `review:${e.path}`, phase: 'Review', model: 'opus', schema: REVIEW_SCHEMA })
     .then((v) => ({ ...e, approved: !!(v && v.approved), issues: (v && v.issues) || '' }))))).filter(Boolean)

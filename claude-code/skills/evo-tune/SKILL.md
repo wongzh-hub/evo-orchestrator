@@ -37,9 +37,19 @@ avoid length limits. Nothing here assumes a specific OS, temp dir, or search too
      signal, ~2× cost.
    - **C) champion-only** — run current best, no comparison, no learning this run.
 
-3. **Ensure a challenger exists** (modes A/B). If missing, spawn an improver agent
-   (opus) — give it the champion script + the last few `journal.md` entries — to
-   produce a meaningfully improved variant. Save via `evo_io.py set-challenger`.
+3. **Ensure a challenger exists via the internal ARENA** (modes A/B) — parity with the
+   standalone Python edition's multi-round arena. Read the champion
+   (`evo_io.py get "$EVO" champion`) and the journal tail, then run the arena through the
+   **Workflow tool**:
+   `Workflow({ scriptPath: "${CLAUDE_PLUGIN_ROOT}/skills/evo-tune/arena.workflow.js",
+   args: { champion: <champion script>, journalTail: <last ~5 journal lines>, rounds: 2,
+   brief: <task brief> } })`
+   It mutates → pairwise order-swapped design-duel → carries the winner across R rounds,
+   early-stopping when a round fails to dethrone; each later round is DIRECTED at the
+   dimensions the judge just penalized. Returns `{ challenger_script, improved, trajectory }`.
+   If `improved` is false, tell the user the arena beat nothing and keep the champion (skip
+   to champion-only). Otherwise save `challenger_script` via `evo_io.py set-challenger`. If the
+   final round dethroned, you may offer to run more rounds.
 
 4. **Execute by mode:**
    - **A:** spawn 2 opus judges (order-swapped, champion-vs-challenger) scoring

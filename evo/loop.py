@@ -19,8 +19,15 @@ user feedback > output comparison (mode c) > design judge (mode b).
 
 import argparse
 import asyncio
+import os
 import time
 from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # python-dotenv is a dep; degrade gracefully if absent
+    def load_dotenv(*_a, **_k):
+        return False
 
 from runtime.harness import Harness, run_script
 
@@ -47,9 +54,13 @@ def _ask(prompt, choices=None):
 def _report(h):
     m = h.meter
     print(f"\n[cost] {m.calls} calls · {m.in_tok}+{m.out_tok} tok · ~${m.usd:.3f}")
+    if getattr(h, "errors", 0) and m.calls == 0:
+        print(f"[WARNING] every model call failed ({h.errors} error(s)) and produced no "
+              f"output — check ANTHROPIC_API_KEY / network. This run did nothing.")
 
 
-async def _select(h, brief, task_input, candidate, incumbent, mode):
+async def _select(h, brief, task_input, candidate, incumbent, mode,
+                  tests_src=None, entry="solve"):
     """Compare candidate (arena challenger) vs incumbent champion.
     Returns (winner_id, reasons, split)."""
     if mode == "a":  # human reads both scripts and picks
@@ -62,20 +73,44 @@ async def _select(h, brief, task_input, candidate, incumbent, mode):
 
     if mode == "c":  # run both on the real input, compare OUTPUTS
         print("running BOTH scripts on the real input (mode c ~= 2x cost)...")
-        a_out = await run_script(h, candidate["script"], task_input)
-        b_out = await run_script(h, incumbent["script"], task_input)
+        try:
+            a_out = await run_script(h, candidate["script"], task_input)
+        except Exception as e:  # a broken LLM-authored candidate must not sink the run
+            h.log(f"challenger script raised ({e}); champion holds")
+            return "champion", [], False
+        try:
+            b_out = await run_script(h, incumbent["script"], task_input)
+        except Exception as e:  # champion itself is broken -> surface loudly, carry challenger
+            h.log(f"WARNING: champion script raised ({e}); carrying challenger")
+            return "challenger", [], False
+        if tests_src:  # objective grade (subprocess-isolated) instead of the LLM judge
+            from .grade import extract_solution, objective_grade, frac
+            sa, sb = extract_solution(a_out), extract_solution(b_out)
+            if sa is not None and sb is not None:
+                ga = objective_grade(sa, tests_src, entry)
+                gb = objective_grade(sb, tests_src, entry)
+                h.log(f"objective grade — challenger {ga.get('passed')}/{ga.get('total')} "
+                      f"vs champion {gb.get('passed')}/{gb.get('total')}")
+                fa, fb = frac(ga), frac(gb)
+                if fa != fb:
+                    return ("challenger" if fa > fb else "champion"), [], False
+                return "champion", [], False  # objective tie -> hold incumbent
+            h.log("--tests given but candidate output has no solution/code field; "
+                  "falling back to the output judge")
         res = await duel_outputs(h, brief,
                                  {"id": "challenger", "out": a_out},
-                                 {"id": "champion", "out": b_out})
-        return res["winner"], res["reasons"], res["split"]
+                                 {"id": "champion", "out": b_out},
+                                 incumbent_id="champion")
+        return (res["winner"] or "champion"), res["reasons"], res["split"]
 
     # mode b (default): cheap design-judge on structure, no execution
-    res = await duel(h, brief, candidate, incumbent)
-    return res["winner"], res["reasons"], res["split"]
+    res = await duel(h, brief, candidate, incumbent, incumbent_id="champion")
+    return (res["winner"] or "champion"), res["reasons"], res["split"]
 
 
 async def run_evo(project_dir, task_type, task_input, *, rounds=2,
-                  interactive=True, mode=None, do_evo=None):
+                  interactive=True, mode=None, do_evo=None,
+                  tests_src=None, entry="solve"):
     evo_dir = Path(project_dir) / "evo"
     store = EvoStore(evo_dir)
     h = Harness()
@@ -132,7 +167,8 @@ async def run_evo(project_dir, task_type, task_input, *, rounds=2,
         mode = _ask("Select mode — a) human  b) design-judge  c) run-all  [b]: ",
                     ["a", "b", "c", ""]) or "b" if interactive else "b"
     winner_id, reasons, split = await _select(h, brief, task_input,
-                                              candidate, incumbent, mode)
+                                              candidate, incumbent, mode,
+                                              tests_src=tests_src, entry=entry)
     carried = candidate if winner_id == "challenger" else incumbent
 
     # 4b. optional FUSE on a split verdict
@@ -177,6 +213,7 @@ async def run_evo(project_dir, task_type, task_input, *, rounds=2,
 
 
 async def run_cli():
+    load_dotenv()  # pick up ANTHROPIC_API_KEY from a .env at the repo root (documented quickstart)
     ap = argparse.ArgumentParser(
         prog="evo",
         description="Self-tuning workflow runner (evolve orchestration scripts as text weights).",
@@ -187,6 +224,11 @@ async def run_cli():
     ap.add_argument("--rounds", type=int, default=2, help="arena rounds (default 2)")
     ap.add_argument("--mode", choices=["a", "b", "c"],
                     help="select mode: a=human, b=design-judge, c=run-all")
+    ap.add_argument("--tests", help="path to a tests file (module-level "
+                    "TESTS=[((args...), expected), ...]); enables objective, subprocess-"
+                    "isolated grading in mode c when the candidate emits a solution/code field")
+    ap.add_argument("--entry", default="solve",
+                    help="entry function name the grader calls (default: solve)")
     ap.add_argument("--evo", dest="do_evo", action="store_true",
                     help="force evolution on (skip the prompt)")
     ap.add_argument("--no-evo", dest="no_evo", action="store_true",
@@ -195,10 +237,28 @@ async def run_cli():
                     help="non-interactive: accept defaults, no prompts")
     a = ap.parse_args()
 
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise SystemExit(
+            "ANTHROPIC_API_KEY is not set. Copy .env.example to .env at the repo root "
+            "(or export the variable), then re-run. Without it every model call fails "
+            "and the run does nothing."
+        )
+
+    tests_src = None
+    if a.tests:
+        with open(a.tests, encoding="utf-8") as _tf:
+            tests_src = _tf.read()
+
     do_evo = True if a.do_evo else (False if a.no_evo else None)
     await run_evo(a.project_dir, a.task, a.input, rounds=a.rounds,
-                  interactive=not a.yes, mode=a.mode, do_evo=do_evo)
+                  interactive=not a.yes, mode=a.mode, do_evo=do_evo,
+                  tests_src=tests_src, entry=a.entry)
+
+
+def main():
+    """Console entry point (sync wrapper around the async CLI)."""
+    asyncio.run(run_cli())
 
 
 if __name__ == "__main__":
-    asyncio.run(run_cli())
+    main()
