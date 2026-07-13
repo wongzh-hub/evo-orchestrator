@@ -7,6 +7,12 @@ export const meta = {
   phases: [{ title: 'Discover' }, { title: 'Transform' }, { title: 'Verify' }],
 }
 
+const AGENT_TIMEOUT_MS = 240000  // guard: a hung agent resolves null, never stalls parallel()
+const aw = (p, o) => Promise.race([
+  agent(p, o),
+  new Promise((r) => setTimeout(() => { log(`timeout: ${(o && o.label) || 'agent'}`); r(null) }, AGENT_TIMEOUT_MS)),
+])
+
 const oldApi = (args && args.old_api) || ''
 const newApi = (args && args.new_api) || ''
 const files = (args && args.files) || []
@@ -27,14 +33,14 @@ const OK_SCHEMA = {
 phase('Discover')
 const out = await pipeline(files,
   async (f) => {
-    const r = await agent(
+    const r = await aw(
       `Does this file use \`${oldApi}\`? If so, list the call-site snippets.\n\nFILE ${f.path}:\n${f.content}`,
       { label: `scan:${f.path}`, phase: 'Discover', model: 'haiku', schema: SITES_SCHEMA })
     return { file: f, sites: r }
   },
   async ({ file, sites }) => {
     if (!sites || !sites.uses) return { path: file.path, skipped: true }
-    const r = await agent(
+    const r = await aw(
       `Migrate \`${oldApi}\` -> \`${newApi}\` in this file. Preserve behavior exactly. ` +
       `Return the FULL new file content.\n\nFILE ${file.path}:\n${file.content}`,
       { label: `xform:${file.path}`, phase: 'Transform', model: 'sonnet', schema: NEW_SCHEMA })
@@ -44,7 +50,7 @@ const out = await pipeline(files,
     if (prev.skipped) return prev
     const r = prev.result
     if (!r || !r.changed) return { path: prev.path, verified: false, reason: 'no change produced' }
-    const v = await agent(
+    const v = await aw(
       `Does this migrated file use \`${newApi}\` correctly and preserve the original behavior? ` +
       `Flag any regression.\n\nFILE ${prev.path}:\n${r.content}`,
       { label: `verify:${prev.path}`, phase: 'Verify', model: 'opus', schema: OK_SCHEMA })

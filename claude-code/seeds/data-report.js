@@ -7,6 +7,12 @@ export const meta = {
   phases: [{ title: 'Stats' }, { title: 'Verify' }, { title: 'Narrate' }],
 }
 
+const AGENT_TIMEOUT_MS = 240000  // guard: a hung agent resolves null, never stalls parallel()
+const aw = (p, o) => Promise.race([
+  agent(p, o),
+  new Promise((r) => setTimeout(() => { log(`timeout: ${(o && o.label) || 'agent'}`); r(null) }, AGENT_TIMEOUT_MS)),
+])
+
 const data = (args && args.data) || ''
 const goal = (args && args.goal) || 'summarize the key trends'
 
@@ -22,7 +28,7 @@ const OK_SCHEMA = {
 }
 
 phase('Stats')
-const s = await agent(
+const s = await aw(
   `Goal: ${goal}\nCompute the key summary statistics from this data. For each, show exactly how ` +
   `it was derived.\n\n${data}`,
   { label: 'stats', phase: 'Stats', model: 'sonnet', schema: STAT_SCHEMA })
@@ -30,7 +36,7 @@ const stats = (s && s.stats) || []
 
 phase('Verify')
 const checked = await parallel(stats.map((st) => () =>
-  agent(`Independently recompute and verify: ${st.name} = ${st.value} (claimed method: ${st.how}).\n\n` +
+  aw(`Independently recompute and verify: ${st.name} = ${st.value} (claimed method: ${st.how}).\n\n` +
         `DATA:\n${data}`,
         { label: `verify:${st.name.slice(0, 16)}`, phase: 'Verify', model: 'opus', schema: OK_SCHEMA })
     .then((v) => ({ ...st, ok: !!(v && v.correct), fix: (v && v.fix) || '' }))))
@@ -38,7 +44,7 @@ const good = checked.filter((c) => c && c.ok)
 log(`${good.length}/${stats.length} stats verified`)
 
 phase('Narrate')
-const narrative = await agent(
+const narrative = await aw(
   `Write a short report for goal '${goal}' using ONLY these verified statistics:\n` +
   good.map((c) => `- ${c.name}: ${c.value}`).join('\n'),
   { label: 'narrate', phase: 'Narrate', model: 'opus' })

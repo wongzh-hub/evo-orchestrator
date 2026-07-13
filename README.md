@@ -105,8 +105,11 @@ State lands in `./myproject/evo/`:
 Ships with 7 starting champions in [`seeds/`](seeds/): `research`, `sec-review`,
 `migrate`, `doc-extract`, `data-report`, `code-feature`, `bug-fix`. First use of
 a type forks its seed to your project's v1 champion; evolution takes over from
-there. Coding seeds can be graded **objectively** (run tests) via
-[`graders/pytest_grader.py`](graders/pytest_grader.py) instead of by judge.
+there. Coding solutions can be graded **objectively** in run-all mode: pass `--tests <file>`
+and, when a candidate emits a `solution`/`code` field, SELECT scores it with
+[`graders/pytest_grader.py`](graders/pytest_grader.py) run in a **subprocess with a
+timeout** (process isolation) via [`evo/grade.py`](evo/grade.py) instead of the LLM
+judge; it falls back to the judge otherwise.
 
 Add a task type by dropping a `<name>.py` into `seeds/`.
 
@@ -175,7 +178,8 @@ the reason the loop is built around structure duels rather than benchmark scores
 - [ ] Provider adapters (OpenAI, Gemini) behind the `agent()` interface — v1 is Anthropic-only
 - [ ] Distil a promoted per-project champion back into the shared seed (with a confirm gate)
 - [ ] Elo/Bradley-Terry aggregation when comparing >2 candidates
-- [ ] Sandboxed execution backend for run-all + graders
+- [x] Subprocess-isolated execution grader for run-all (`--tests`) — see `evo/grade.py`
+- [ ] Full container/VM sandbox for run-all + graders
 - [ ] More seeds (test-authoring, refactor, triage)
 
 ## License

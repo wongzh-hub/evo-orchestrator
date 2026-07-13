@@ -6,6 +6,12 @@ export const meta = {
   phases: [{ title: 'Reproduce' }, { title: 'Locate' }, { title: 'Fix' }, { title: 'Verify' }],
 }
 
+const AGENT_TIMEOUT_MS = 240000  // guard: a hung agent resolves null, never stalls parallel()
+const aw = (p, o) => Promise.race([
+  agent(p, o),
+  new Promise((r) => setTimeout(() => { log(`timeout: ${(o && o.label) || 'agent'}`); r(null) }, AGENT_TIMEOUT_MS)),
+])
+
 const report = (args && args.report) || ''
 const code = (args && args.code) || ''
 const tests = (args && args.tests) || ''
@@ -24,24 +30,24 @@ const VERIFY_SCHEMA = {
 }
 
 phase('Reproduce')
-const repro = await agent(
+const repro = await aw(
   `State the exact failing behavior and a minimal reproduction.\nREPORT: ${report}\n\nCODE:\n${code}`,
   { label: 'reproduce', phase: 'Reproduce', model: 'sonnet' })
 
 phase('Locate')
-const loc = await agent(
+const loc = await aw(
   `Find the ROOT CAUSE (not the symptom).\nREPRO: ${repro}\n\nCODE:\n${code}`,
   { label: 'locate', phase: 'Locate', model: 'opus', schema: LOC_SCHEMA })
 
 phase('Fix')
-const fix = await agent(
+const fix = await aw(
   'Patch the root cause with the SMALLEST correct change. Return the full new file.\n' +
   `ROOT CAUSE: ${(loc && loc.root_cause) || ''}\n\nCODE:\n${code}`,
   { label: 'fix', phase: 'Fix', model: 'sonnet', schema: FIX_SCHEMA })
 
 phase('Verify')
 const testsClause = tests ? `\nCheck against these tests:\n${tests}` : ''
-const ver = await agent(
+const ver = await aw(
   'Does this patch fix the bug without regressions?' + testsClause + '\n' +
   `REPORT: ${report}\nPATCH:\n${(fix && fix.content) || ''}`,
   { label: 'verify', phase: 'Verify', model: 'opus', schema: VERIFY_SCHEMA })

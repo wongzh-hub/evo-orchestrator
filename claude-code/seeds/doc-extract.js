@@ -6,6 +6,12 @@ export const meta = {
   phases: [{ title: 'Extract' }],
 }
 
+const AGENT_TIMEOUT_MS = 240000  // guard: a hung agent resolves null, never stalls parallel()
+const aw = (p, o) => Promise.race([
+  agent(p, o),
+  new Promise((r) => setTimeout(() => { log(`timeout: ${(o && o.label) || 'agent'}`); r(null) }, AGENT_TIMEOUT_MS)),
+])
+
 const docs = (args && args.docs) || []
 const fields = (args && args.fields) || ['title', 'date', 'summary']
 const schema = {
@@ -15,7 +21,7 @@ const schema = {
 
 phase('Extract')
 const got = await parallel(docs.map((d) => () =>
-  agent('Extract exactly these fields. Use "" if a field is genuinely absent — never guess or ' +
+  aw('Extract exactly these fields. Use "" if a field is genuinely absent — never guess or ' +
         `fabricate:\n${JSON.stringify(fields)}\n\nDOCUMENT:\n${d.text}`,
         { label: `extract:${d.id}`, phase: 'Extract', model: 'sonnet', schema })
     .then((r) => ({ id: d.id, fields: r }))))

@@ -12,7 +12,11 @@ Follow the `evo-tune` skill procedure exactly:
    init it as the v1 champion.
 2. Ask me the per-run compare mode: **A** design-judge (cheap) / **B** run-all
    (compare real outputs, ~2×) / **C** champion-only (no learning).
-3. Ensure a challenger exists (mutate the champion using the last journal entries).
+3. Ensure a challenger exists via the internal **arena** (Workflow tool,
+   `${CLAUDE_PLUGIN_ROOT}/skills/evo-tune/arena.workflow.js`): multi-round mutate → order-
+   swapped design-duel → carry winner, early-stop, directed by the judge's per-dimension
+   losses. Save the returned `challenger_script` via `evo_io.py set-challenger`.
+
 4. Run + compare champion vs challenger **pairwise, order-swapped** — never a raw score.
 5. Collect my feedback (good/bad + note) — it is authoritative and overrides the judge.
 6. Promote the winner (`evo_io.py promote`), refresh the challenger, and append the

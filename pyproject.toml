@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evo-orchestrator"
+version = "0.1.0"
+description = "Evolve multi-agent workflow scaffolds as readable text 'weights' — champion/challenger search with human feedback as reward."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "wongzh-hub" }]
+keywords = ["llm", "agents", "workflow", "evolution", "anthropic", "orchestration"]
+dependencies = [
+    "anthropic>=0.40,<1.0",
+    "jsonschema>=4,<5",
+    "python-dotenv>=1,<2",
+]
+
+[project.urls]
+Homepage = "https://github.com/wongzh-hub/evo-orchestrator"
+
+[project.scripts]
+evo = "evo.loop:main"
+
+# seeds/, graders/, examples/ are read as repo files at runtime, so install editable:
+#   pip install -e .
+[tool.setuptools]
+packages = ["evo", "runtime"]

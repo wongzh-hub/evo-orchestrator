@@ -18,3 +18,7 @@ jobs:
         run: python tests/smoke_offline.py
       - name: Seed execution smoke test (all 7 seeds)
         run: python tests/smoke_seeds.py
+      - name: Harness contract test (offline, fake client)
+        run: python tests/test_harness_contract.py
+      - name: Grader wiring test (subprocess isolation)
+        run: python tests/test_grader_wiring.py
